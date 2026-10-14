@@ -3,11 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="_csrf" th:content="${_csrf.token}">
+    <meta name="_csrf_header" th:content="${_csrf.headerName}">
     <title>Admin panel</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
     <style>
         body { background: #f8f9fa; }
         .sidebar { background: #fff; min-height: calc(100vh - 56px); }
+        .nav-pills .nav-link.active { background-color: #2f6f6d; }
+        .nav-pills .nav-link:not(.active) { color: #2f6f6d; }
+        .btn-primary { background-color: #2f6f6d; border-color: #2f6f6d; }
+        .btn-primary:hover { background-color: #245654; border-color: #245654; }
     </style>
 </head>
 <body>
@@ -21,31 +27,24 @@
             <div th:replace="~{fragments :: sidebar('admin')}"></div>
         </div>
 
-        <main class="col-md-10 pt-3 px-4 pb-5"
-              th:with="showNew=${user.id == 0 and user.name != null}">
+        <main class="col-md-10 pt-3 px-4 pb-5">
 
             <h1>Admin panel</h1>
 
-            <div th:object="${user}">
-                <div class="alert alert-danger mt-3" th:if="${#fields.hasErrors('*')}">
-                    <div th:each="err : ${#fields.allErrors()}" th:text="${err}">Error</div>
-                </div>
-            </div>
+            <div id="alerts"></div>
 
             <ul class="nav nav-tabs mt-3">
                 <li class="nav-item">
-                    <a class="nav-link" th:classappend="${!showNew} ? 'active'"
-                       data-toggle="tab" href="#table-pane">Users table</a>
+                    <a class="nav-link active" id="tab-table" data-toggle="tab" href="#table-pane">Users table</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" th:classappend="${showNew} ? 'active'"
-                       data-toggle="tab" href="#new-pane">New User</a>
+                    <a class="nav-link" id="tab-new" data-toggle="tab" href="#new-pane">New User</a>
                 </li>
             </ul>
 
             <div class="tab-content bg-white border border-top-0 p-4">
 
-                <div class="tab-pane fade" id="table-pane" th:classappend="${!showNew} ? 'show active'">
+                <div class="tab-pane fade show active" id="table-pane">
                     <h5 class="mb-3">All users</h5>
                     <div class="table-responsive">
                         <table class="table table-striped">
@@ -61,95 +60,246 @@
                                 <th>Delete</th>
                             </tr>
                             </thead>
-                            <tbody>
-                            <tr th:if="${#lists.isEmpty(users)}">
-                                <td colspan="8" class="text-center text-muted">No users yet</td>
-                            </tr>
-                            <tr th:each="u : ${users}">
-                                <td th:text="${u.id}">1</td>
-                                <td th:text="${u.name}">admin</td>
-                                <td th:text="${u.surname}">admin</td>
-                                <td th:text="${u.age}">35</td>
-                                <td th:text="${u.email}">admin@mail.ru</td>
-                                <td>
-                                    <span th:each="r : ${u.roles}"
-                                          th:text="${#strings.replace(r.name, 'ROLE_', '')} + ' '">ADMIN</span>
-                                </td>
-                                <td>
-                                    <button type="button" class="btn btn-info btn-sm text-white"
-                                            data-toggle="modal"
-                                            th:attr="data-target='#editModal' + ${u.id}">Edit</button>
-                                </td>
-                                <td>
-                                    <button type="button" class="btn btn-danger btn-sm"
-                                            data-toggle="modal"
-                                            th:attr="data-target='#deleteModal' + ${u.id}">Delete</button>
-                                </td>
-                            </tr>
+                            <tbody id="users-body">
+                            <tr><td colspan="8" class="text-center text-muted">Loading…</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <div class="tab-pane fade" id="new-pane" th:classappend="${showNew} ? 'show active'">
+                <div class="tab-pane fade" id="new-pane">
                     <h5 class="mb-3">Add new user</h5>
-                    <form th:action="@{/admin}" method="post" class="col-md-6 px-0">
-                        <div th:replace="~{fragments :: userFields(${user}, 'new', true)}"></div>
+                    <form id="new-form" class="col-md-6 px-0">
+                        <div id="new-errors"></div>
+                        <div id="new-fields" class="text-muted">Loading…</div>
                         <button type="submit" class="btn btn-success mt-3">Add new user</button>
                     </form>
                 </div>
             </div>
 
-            <th:block th:each="u : ${users}">
+            <div class="modal fade" id="editModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <form id="edit-form">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Edit user</h5>
+                                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="edit-errors"></div>
+                                <div id="edit-fields"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                                <button type="submit" class="btn btn-primary">Edit</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
 
-                <div class="modal fade" th:id="'editModal' + ${u.id}" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-scrollable">
-                        <div class="modal-content">
-                            <form th:action="@{/admin/update}" method="post">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Edit user</h5>
-                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
-                                </div>
-                                <div class="modal-body">
-                                    <input type="hidden" name="id" th:value="${u.id}">
-                                    <div th:replace="~{fragments :: userFields(${u}, ${'edit' + u.id}, false)}"></div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                                    <button type="submit" class="btn btn-primary">Edit</button>
-                                </div>
-                            </form>
+            <div class="modal fade" id="deleteModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Delete user</h5>
+                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="delete-errors"></div>
+                            Are you sure you want to delete <strong id="delete-email"></strong>?
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-danger" id="delete-confirm">Delete</button>
                         </div>
                     </div>
                 </div>
-
-                <div class="modal fade" th:id="'deleteModal' + ${u.id}" tabindex="-1">
-                    <div class="modal-dialog">
-                        <div class="modal-content">
-                            <form th:action="@{/admin/delete(id=${u.id})}" method="post">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Delete user</h5>
-                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
-                                </div>
-                                <div class="modal-body">
-                                    Are you sure you want to delete
-                                    <strong th:text="${u.email}">user@mail.ru</strong>?
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                                    <button type="submit" class="btn btn-danger">Delete</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-
-            </th:block>
+            </div>
         </main>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.4/dist/jquery.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<script th:src="@{/js/app.js}"></script>
+<script th:inline="none">
+    (function () {
+        const usersBody = document.getElementById('users-body');
+        const alertsBox = document.getElementById('alerts');
+        let users = [];
+        let deleteTarget = null;
+
+        let rolesPromise = null;
+        let typesPromise = null;
+        const loadRoles = () => rolesPromise || (rolesPromise = api('/api/admin/roles'));
+        const loadTypes = () => typesPromise || (typesPromise = api('/api/admin/employment-types'));
+
+        function showAlert(type, text) {
+            alertsBox.innerHTML =
+                '<div class="alert alert-' + type + ' alert-dismissible fade show mt-3">' + esc(text) +
+                '<button type="button" class="close" data-dismiss="alert">&times;</button></div>';
+        }
+
+        function showErrors(boxId, err) {
+            const html = errorsHtml(err) || '<div>Something went wrong</div>';
+            document.getElementById(boxId).innerHTML = '<div class="alert alert-danger">' + html + '</div>';
+        }
+
+        function renderTable() {
+            if (!users.length) {
+                usersBody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No users yet</td></tr>';
+                return;
+            }
+            usersBody.innerHTML = users.map(u => `
+                <tr>
+                    <td>${esc(u.id)}</td>
+                    <td>${esc(u.name)}</td>
+                    <td>${esc(u.surname)}</td>
+                    <td>${esc(u.age)}</td>
+                    <td>${esc(u.email)}</td>
+                    <td>${roleNames(u.roles)}</td>
+                    <td><button type="button" class="btn btn-info btn-sm text-white"
+                                data-action="edit" data-id="${esc(u.id)}">Edit</button></td>
+                    <td><button type="button" class="btn btn-danger btn-sm"
+                                data-action="delete" data-id="${esc(u.id)}">Delete</button></td>
+                </tr>`).join('');
+        }
+
+        async function refresh() {
+            users = await api('/api/admin/users');
+            renderTable();
+        }
+
+        function formHtml(u, p, isNew, roles, types) {
+            const selected = new Set((u.roles || []).map(r => r.id));
+            const input = (key, label, type, extra) => `
+                <div class="form-group">
+                    <label for="${p}-${key}">${label}</label>
+                    <input class="form-control" type="${type}" id="${p}-${key}" name="${key}"
+                           value="${esc(u[key])}" ${extra || ''}>
+                </div>`;
+
+            return input('name', 'First name', 'text', 'required')
+                + input('surname', 'Last name', 'text')
+                + input('age', 'Age', 'number', 'min="18" max="120" required')
+                + input('email', 'Email (login)', 'email', 'required')
+                + `<div class="form-group">
+                       <label for="${p}-password">${isNew ? 'Password' : 'New password'}</label>
+                       <input class="form-control" type="password" id="${p}-password" name="password"
+                              autocomplete="new-password" ${isNew ? 'required' : 'placeholder="Leave blank to keep current"'}>
+                   </div>`
+                + input('position', 'Position', 'text')
+                + input('salary', 'Salary', 'number', 'min="0" step="0.01"')
+                + `<div class="form-group">
+                       <label for="${p}-employmentType">Employment type</label>
+                       <select class="form-control" id="${p}-employmentType" name="employmentType">
+                           <option value="">Not specified</option>
+                           ${types.map(t => `<option value="${esc(t)}" ${u.employmentType === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+                       </select>
+                   </div>`
+                + `<div class="form-group mb-0">
+                       <label class="d-block">Roles</label>
+                       ${roles.map(r => `
+                           <div class="form-check form-check-inline">
+                               <input class="form-check-input" type="checkbox" name="roleIds"
+                                      id="${p}-role-${esc(r.id)}" value="${esc(r.id)}" ${selected.has(r.id) ? 'checked' : ''}>
+                               <label class="form-check-label" for="${p}-role-${esc(r.id)}">${esc(String(r.name).replace('ROLE_', ''))}</label>
+                           </div>`).join('')}
+                   </div>`;
+        }
+
+        function readForm(form) {
+            const data = new FormData(form);
+            const toNumber = v => (v === null || v === '') ? null : Number(v);
+            return {
+                name: data.get('name'),
+                surname: data.get('surname'),
+                age: Number(data.get('age')),
+                email: data.get('email'),
+                password: data.get('password'),
+                position: data.get('position'),
+                salary: toNumber(data.get('salary')),
+                employmentType: data.get('employmentType') || null,
+                roleIds: data.getAll('roleIds').map(Number)
+            };
+        }
+
+        async function buildNewForm() {
+            const [roles, types] = await Promise.all([loadRoles(), loadTypes()]);
+            document.getElementById('new-fields').innerHTML = formHtml({}, 'new', true, roles, types);
+        }
+
+        $('#tab-new').one('shown.bs.tab', () => buildNewForm().catch(e => showErrors('new-errors', e)));
+
+        document.getElementById('new-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            document.getElementById('new-errors').innerHTML = '';
+            try {
+                await api('/api/admin/users', 'POST', readForm(event.target));
+                await refresh();
+                await buildNewForm();
+                $('#tab-table').tab('show');
+                showAlert('success', 'User created');
+            } catch (err) {
+                showErrors('new-errors', err);
+            }
+        });
+
+        usersBody.addEventListener('click', async (event) => {
+            const button = event.target.closest('button[data-action]');
+            if (!button) return;
+            const user = users.find(u => String(u.id) === button.dataset.id);
+            if (!user) return;
+
+            if (button.dataset.action === 'edit') {
+                document.getElementById('edit-errors').innerHTML = '';
+                try {
+                    const [roles, types] = await Promise.all([loadRoles(), loadTypes()]);
+                    document.getElementById('edit-fields').innerHTML = formHtml(user, 'edit', false, roles, types);
+                    document.getElementById('edit-form').dataset.id = user.id;
+                    $('#editModal').modal('show');
+                } catch (err) {
+                    showAlert('danger', err.message || 'Failed to open the form');
+                }
+            } else {
+                deleteTarget = user;
+                document.getElementById('delete-errors').innerHTML = '';
+                document.getElementById('delete-email').textContent = user.email;
+                $('#deleteModal').modal('show');
+            }
+        });
+
+        document.getElementById('edit-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            document.getElementById('edit-errors').innerHTML = '';
+            try {
+                await api('/api/admin/users/' + event.target.dataset.id, 'PUT', readForm(event.target));
+                $('#editModal').modal('hide');
+                await refresh();
+                showAlert('success', 'User updated');
+            } catch (err) {
+                showErrors('edit-errors', err);
+            }
+        });
+
+        document.getElementById('delete-confirm').addEventListener('click', async () => {
+            if (!deleteTarget) return;
+            try {
+                await api('/api/admin/users/' + deleteTarget.id, 'DELETE');
+                $('#deleteModal').modal('hide');
+                await refresh();
+                showAlert('success', 'User deleted');
+            } catch (err) {
+                showErrors('delete-errors', err);
+            }
+        });
+
+        refresh().catch(err => {
+            usersBody.innerHTML = '';
+            showAlert('danger', err.message || 'Failed to load users');
+        });
+    })();
+</script>
 </body>
 </html>

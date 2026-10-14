@@ -8,6 +8,8 @@
     <style>
         body { background: #f8f9fa; }
         .sidebar { background: #fff; min-height: calc(100vh - 56px); }
+        .nav-pills .nav-link.active { background-color: #2f6f6d; }
+        .nav-pills .nav-link:not(.active) { color: #2f6f6d; }
     </style>
 </head>
 <body>
@@ -21,10 +23,11 @@
             <div th:replace="~{fragments :: sidebar('user')}"></div>
         </div>
 
-        <main class="col-md-10 pt-3 px-4 pb-5"
-              th:with="u=${user != null ? user : currentUser}">
+        <main class="col-md-10 pt-3 px-4 pb-5">
 
             <h1>User information-page</h1>
+
+            <div id="alerts"></div>
 
             <div class="card mt-3">
                 <div class="card-header"><h5 class="mb-0">About user</h5></div>
@@ -44,21 +47,8 @@
                                 <th>Role</th>
                             </tr>
                             </thead>
-                            <tbody>
-                            <tr>
-                                <td th:text="${u.id}">1</td>
-                                <td th:text="${u.name}">user</td>
-                                <td th:text="${u.surname}">user</td>
-                                <td th:text="${u.age}">30</td>
-                                <td th:text="${u.email}">user@mail.ru</td>
-                                <td th:text="${u.position != null and !#strings.isEmpty(u.position)} ? ${u.position} : '—'">Developer</td>
-                                <td th:text="${u.salary != null} ? ${#numbers.formatDecimal(u.salary, 1, 'COMMA', 2, 'POINT')} : '—'">0.00</td>
-                                <td th:text="${u.employmentType != null} ? ${u.employmentType} : '—'">FULL_TIME</td>
-                                <td>
-                                    <span th:each="r : ${u.roles}"
-                                          th:text="${#strings.replace(r.name, 'ROLE_', '')} + ' '">USER</span>
-                                </td>
-                            </tr>
+                            <tbody id="user-body">
+                            <tr><td colspan="9" class="text-center text-muted">Loading…</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -68,5 +58,35 @@
     </div>
 </div>
 
+<script th:src="@{/js/app.js}"></script>
+<script th:inline="none">
+    (function () {
+        const body = document.getElementById('user-body');
+        const dash = '—';
+
+        api('/api/user')
+            .then(u => {
+                const salary = u.salary == null ? dash
+                    : Number(u.salary).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                body.innerHTML = `
+                    <tr>
+                        <td>${esc(u.id)}</td>
+                        <td>${esc(u.name)}</td>
+                        <td>${esc(u.surname)}</td>
+                        <td>${esc(u.age)}</td>
+                        <td>${esc(u.email)}</td>
+                        <td>${esc(u.position || dash)}</td>
+                        <td>${esc(salary)}</td>
+                        <td>${esc(u.employmentType || dash)}</td>
+                        <td>${roleNames(u.roles)}</td>
+                    </tr>`;
+            })
+            .catch(err => {
+                body.innerHTML = '';
+                document.getElementById('alerts').innerHTML =
+                    '<div class="alert alert-danger mt-3">' + esc(err.message || 'Failed to load user') + '</div>';
+            });
+    })();
+</script>
 </body>
 </html>
