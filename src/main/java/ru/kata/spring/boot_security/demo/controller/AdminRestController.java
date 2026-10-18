@@ -17,6 +17,7 @@ import ru.kata.spring.boot_security.demo.dto.RoleDto;
 import ru.kata.spring.boot_security.demo.dto.UserDto;
 import ru.kata.spring.boot_security.demo.dto.UserRequest;
 import ru.kata.spring.boot_security.demo.enums.EmploymentType;
+import ru.kata.spring.boot_security.demo.mapper.UserMapper;
 import ru.kata.spring.boot_security.demo.model.User;
 import ru.kata.spring.boot_security.demo.service.UserService;
 
@@ -25,19 +26,21 @@ import ru.kata.spring.boot_security.demo.service.UserService;
 public class AdminRestController {
 
     private final UserService userService;
+    private final UserMapper userMapper;
 
-    public AdminRestController(UserService userService) {
+    public AdminRestController(UserService userService, UserMapper userMapper) {
         this.userService = userService;
+        this.userMapper = userMapper;
     }
 
     @GetMapping("/users")
     public List<UserDto> findAll() {
-        return userService.findAll().stream().map(UserDto::from).toList();
+        return userMapper.toDtos(userService.findAll());
     }
 
     @GetMapping("/users/{id}")
     public UserDto findOne(@PathVariable("id") long id) {
-        return UserDto.from(findOrThrow(id));
+        return userMapper.toDto(findOrThrow(id));
     }
 
     @PostMapping("/users")
@@ -47,23 +50,23 @@ public class AdminRestController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password is required");
         }
 
-        User user = toEntity(new User(), request);
+        User user = userMapper.toEntity(request);
         checkEmailIsFree(user);
         userService.addUser(user);
 
-        return UserDto.from(user);
+        return userMapper.toDto(user);
     }
 
     @PutMapping("/users/{id}")
     public UserDto update(@PathVariable("id") long id, @Valid @RequestBody UserRequest request) {
         findOrThrow(id);
 
-        User user = toEntity(new User(), request);
+        User user = userMapper.toEntity(request, id);
         user.setId(id);
         checkEmailIsFree(user);
         userService.updateUser(user);
 
-        return UserDto.from(findOrThrow(id));
+        return userMapper.toDto(findOrThrow(id));
     }
 
     @DeleteMapping("/users/{id}")
@@ -78,9 +81,7 @@ public class AdminRestController {
 
     @GetMapping("/roles")
     public List<RoleDto> findAllRoles() {
-        return userService.findAllRoles().stream()
-                .map(role -> new RoleDto(role.getId(), role.getName()))
-                .toList();
+        return userMapper.toRoleDtos(userService.findAllRoles());
     }
 
     @GetMapping("/employment-types")
@@ -105,17 +106,4 @@ public class AdminRestController {
         }
     }
 
-    private User toEntity(User user, UserRequest request) {
-        user.setName(request.name());
-        user.setSurname(request.surname());
-        user.setAge(request.age());
-        user.setEmail(request.email());
-        user.setPassword(request.password());
-        user.setSalary(request.salary());
-        user.setPosition(request.position());
-        user.setEmploymentType(request.employmentType());
-        user.setRoles(userService.findRolesByIds(
-                request.roleIds() == null ? null : List.copyOf(request.roleIds())));
-        return user;
-    }
 }
